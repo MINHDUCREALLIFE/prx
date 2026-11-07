@@ -1,0 +1,198 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+public class AimAssistSystem : MonoBehaviour
+{
+    public float assistRadius = 5f;
+    public float assistStrength = 0.3f;
+    public float smoothSpeed = 8f;
+    public LayerMask targetLayer;
+    
+    private Vector3 assistedAim;
+    
+    public Vector3 GetAssistedAim(Vector3 currentAim, Camera camera)
+    {
+        Transform closestTarget = FindClosestTarget(currentAim, camera);
+        
+        if (closestTarget != null)
+        {
+            Vector3 targetDirection = (closestTarget.position - camera.transform.position).normalized;
+            Vector3 blendedAim = Vector3.Lerp(currentAim, targetDirection, assistStrength);
+            assistedAim = Vector3.Lerp(assistedAim, blendedAim, smoothSpeed * Time.deltaTime);
+            return assistedAim;
+        }
+        
+        assistedAim = Vector3.Lerp(assistedAim, currentAim, smoothSpeed * Time.deltaTime);
+        return assistedAim;
+    }
+    
+    private Transform FindClosestTarget(Vector3 aimDirection, Camera camera)
+    {
+        Collider[] targets = Physics.OverlapSphere(camera.transform.position, assistRadius, targetLayer);
+        Transform closest = null;
+        float closestAngle = float.MaxValue;
+        
+        foreach (Collider target in targets)
+        {
+            Vector3 directionToTarget = (target.transform.position - camera.transform.position).normalized;
+            float angle = Vector3.Angle(aimDirection, directionToTarget);
+            
+            if (angle < closestAngle)
+            {
+                closestAngle = angle;
+                closest = target.transform;
+            }
+        }
+        
+        return closest;
+    }
+}
+
+public class SmoothAimController : MonoBehaviour
+{
+    public float smoothSpeed = 10f;
+    public float maxDelta = 0.2f;
+    public Vector2 sensitivity = new Vector2(2f, 2f);
+    
+    private Vector2 currentRotation;
+    private Vector2 targetRotation;
+    
+    public void UpdateAim(Vector2 input)
+    {
+        targetRotation += input * sensitivity;
+        targetRotation.y = Mathf.Clamp(targetRotation.y, -89f, 89f);
+        
+        Vector2 delta = targetRotation - currentRotation;
+        delta.x = Mathf.Clamp(delta.x, -maxDelta, maxDelta);
+        delta.y = Mathf.Clamp(delta.y, -maxDelta, maxDelta);
+        
+        currentRotation += delta * smoothSpeed * Time.deltaTime;
+        
+        transform.localRotation = Quaternion.Euler(-currentRotation.y, currentRotation.x, 0);
+    }
+}
+
+public class RecoilControl : MonoBehaviour
+{
+    public float recoilAmount = 1f;
+    public float recoilSpeed = 5f;
+    public float recoverySpeed = 3f;
+    public Vector2 recoilPattern = new Vector2(0, 1);
+    
+    private Vector2 currentRecoil;
+    private Vector2 targetRecoil;
+    
+    public void AddRecoil()
+    {
+        targetRecoil += recoilPattern * recoilAmount;
+    }
+    
+    public Vector2 GetRecoilOffset()
+    {
+        currentRecoil = Vector2.Lerp(currentRecoil, targetRecoil, recoilSpeed * Time.deltaTime);
+        targetRecoil = Vector2.Lerp(targetRecoil, Vector2.zero, recoverySpeed * Time.deltaTime);
+        return currentRecoil;
+    }
+}
+
+public class StabilizedAiming : MonoBehaviour
+{
+    public float stabilizationStrength = 0.5f;
+    public float stabilizationSpeed = 8f;
+    public float movementThreshold = 0.1f;
+    
+    private Vector2 lastInput;
+    private Vector2 stabilizedAim;
+    
+    public Vector2 StabilizeAim(Vector2 rawInput)
+    {
+        float inputMagnitude = rawInput.magnitude;
+        
+        if (inputMagnitude < movementThreshold)
+        {
+            stabilizedAim = Vector2.Lerp(stabilizedAim, Vector2.zero, stabilizationSpeed * Time.deltaTime);
+        }
+        else
+        {
+            Vector2 smoothedInput = Vector2.Lerp(lastInput, rawInput, stabilizationStrength);
+            stabilizedAim = Vector2.Lerp(stabilizedAim, smoothedInput, stabilizationSpeed * Time.deltaTime);
+        }
+        
+        lastInput = rawInput;
+        return stabilizedAim;
+    }
+}
+
+public class PredictiveAiming : MonoBehaviour
+{
+    public float predictionTime = 0.2f;
+    public float smoothSpeed = 6f;
+    
+    private Vector3 predictedPosition;
+    
+    public Vector3 GetPredictedAim(Transform target, Rigidbody targetRigidbody)
+    {
+        if (targetRigidbody != null)
+        {
+            Vector3 prediction = target.position + targetRigidbody.velocity * predictionTime;
+            predictedPosition = Vector3.Lerp(predictedPosition, prediction, smoothSpeed * Time.deltaTime);
+            return predictedPosition;
+        }
+        
+        return target.position;
+    }
+}
+
+public class AdaptiveAimSensitivity : MonoBehaviour
+{
+    public float minSensitivity = 0.5f;
+    public float maxSensitivity = 2f;
+    public float adaptSpeed = 3f;
+    
+    private float currentSensitivity;
+    
+    public float GetAdaptiveSensitivity(float targetDistance)
+    {
+        float targetSensitivity = Mathf.Lerp(maxSensitivity, minSensitivity, targetDistance / 100f);
+        currentSensitivity = Mathf.Lerp(currentSensitivity, targetSensitivity, adaptSpeed * Time.deltaTime);
+        return currentSensitivity;
+    }
+}
+
+public class TargetLockSmoothing : MonoBehaviour
+{
+    public float lockStrength = 0.4f;
+    public float lockSmoothSpeed = 10f;
+    public float breakDistance = 3f;
+    
+    private Transform lockedTarget;
+    private Vector3 smoothedLock;
+    
+    public Vector3 GetLockedAim(Vector3 currentAim, Transform target, Camera camera)
+    {
+        if (target != null)
+        {
+            if (lockedTarget != target)
+            {
+                lockedTarget = target;
+                smoothedLock = currentAim;
+            }
+            
+            Vector3 targetDirection = (target.position - camera.transform.position).normalized;
+            Vector3 blendedAim = Vector3.Lerp(currentAim, targetDirection, lockStrength);
+            smoothedLock = Vector3.Lerp(smoothedLock, blendedAim, lockSmoothSpeed * Time.deltaTime);
+            
+            float distance = Vector3.Distance(camera.transform.position, target.position);
+            if (distance > breakDistance)
+            {
+                lockedTarget = null;
+            }
+            
+            return smoothedLock;
+        }
+        
+        lockedTarget = null;
+        smoothedLock = currentAim;
+        return currentAim;
+    }
+}
